@@ -1,14 +1,14 @@
 enum AquariumState: Equatable {
     case starting
     case ready
-    case permissionRequired
+    case permissionRequired(String)
     case unavailable(String)
 
     var label: String {
         switch self {
         case .starting: "Connecting to Aqua Voice…"
         case .ready: "Ready"
-        case .permissionRequired: "Input Monitoring required"
+        case let .permissionRequired(message): message
         case let .unavailable(message): message
         }
     }

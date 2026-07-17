@@ -6,39 +6,41 @@ struct MappingRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            TextField("Icon", text: $mapping.icon)
-                .multilineTextAlignment(.center)
-                .frame(width: 44)
-                .accessibilityLabel("Language icon")
-
-            Picker("Language", selection: $mapping.languageCode) {
-                ForEach(LanguageOption.all) { language in
-                    Text("\(language.icon) \(language.name)")
-                        .tag(language.code)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Picker("Language", selection: $mapping.languageCode) {
+                    ForEach(LanguageOption.all) { language in
+                        Text(language.displayName)
+                            .tag(language.code)
+                    }
                 }
-            }
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
-            .onChange(of: mapping.languageCode) { _, code in
-                mapping.icon = LanguageOption.option(for: code).icon
-            }
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
 
-            Picker("Hotkey", selection: $mapping.hotkey) {
-                ForEach(HotkeyOption.allCases) { hotkey in
-                    Text("\(hotkey.glyph) \(hotkey.displayName)")
-                        .tag(hotkey)
+                Picker("Trigger", selection: $mapping.hotkey) {
+                    ForEach(HotkeyOption.allCases) { hotkey in
+                        Text("\(hotkey.glyph) \(hotkey.displayName)")
+                            .tag(hotkey)
+                    }
                 }
-            }
-            .labelsHidden()
-            .frame(width: 170)
+                .labelsHidden()
+                .frame(width: 170)
 
-            Button(role: .destructive, action: onRemove) {
-                Image(systemName: "minus.circle.fill")
+                Button(role: .destructive, action: onRemove) {
+                    Image(systemName: "minus.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canRemove)
+                .accessibilityLabel("Remove language")
             }
-            .buttonStyle(.borderless)
-            .disabled(!canRemove)
-            .accessibilityLabel("Remove language")
+
+            LabeledContent("Aqua hotkey") {
+                TextField("MetaRight+F17", text: $mapping.aquaShortcut)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 250)
+                    .font(.system(.body, design: .monospaced))
+            }
         }
+        .padding(.vertical, 3)
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 enum AquaCoordinatorError: LocalizedError {
@@ -25,15 +26,10 @@ final class AquaCoordinator {
     )
 
     private let client: AquaAutomationClient
-    private let settingsFile: AquaSettingsFile
     private let monitor: ShortcutMonitor
 
-    init(
-        client: AquaAutomationClient = .init(),
-        settingsFile: AquaSettingsFile = .init()
-    ) {
+    init(client: AquaAutomationClient = .init()) {
         self.client = client
-        self.settingsFile = settingsFile
         monitor = ShortcutMonitor(client: client)
     }
 
@@ -43,8 +39,8 @@ final class AquaCoordinator {
     ) throws {
         monitor.update(mappings: mappings)
 
-        if forceRestart || !settingsFile.matches(mappings) || !isConnected {
-            try restartAqua(with: mappings)
+        if forceRestart || !isConnected {
+            try restartAqua()
         }
 
         try client.ping()
@@ -64,7 +60,7 @@ final class AquaCoordinator {
         }
     }
 
-    private func restartAqua(with mappings: [LanguageMapping]) throws {
+    private func restartAqua() throws {
         guard FileManager.default.fileExists(
             atPath: Self.aquaApplicationURL.path
         ) else {
@@ -73,7 +69,6 @@ final class AquaCoordinator {
 
         terminateRunningAqua()
         try client.removeStaleSocket()
-        try settingsFile.apply(mappings)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -87,10 +82,18 @@ final class AquaCoordinator {
             throw AquaCoordinatorError.launchFailed
         }
 
-        for _ in 0 ..< 80 {
-            if isConnected { return }
-            Thread.sleep(forTimeInterval: 0.125)
-        }
+        Thread.sleep(forTimeInterval: 5)
+        let connectionDeadline = Date().addingTimeInterval(5)
+        repeat {
+            do {
+                try client.ping()
+                return
+            } catch {
+                if Date() < connectionDeadline {
+                    Thread.sleep(forTimeInterval: 1)
+                }
+            }
+        } while Date() < connectionDeadline
         throw AquaCoordinatorError.connectionTimedOut
     }
 
@@ -104,6 +107,24 @@ final class AquaCoordinator {
         while Date() < deadline, applications.contains(where: { !$0.isTerminated }) {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        applications.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
+        let remaining = applications.filter { !$0.isTerminated }
+        remaining.forEach { $0.forceTerminate() }
+
+        let forceDeadline = Date().addingTimeInterval(1)
+        while Date() < forceDeadline,
+              remaining.contains(where: { !$0.isTerminated })
+        {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        let killed = remaining.filter { !$0.isTerminated }
+        killed.forEach {
+            Darwin.kill($0.processIdentifier, SIGKILL)
+        }
+        let killDeadline = Date().addingTimeInterval(1)
+        while Date() < killDeadline,
+              killed.contains(where: { !$0.isTerminated })
+        {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
     }
 }

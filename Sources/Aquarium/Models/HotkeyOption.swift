@@ -31,11 +31,23 @@ enum HotkeyOption: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    func isPressed(in flags: CGEventFlags) -> Bool {
+    var suggestedAquaShortcut: String {
         switch self {
-        case .rightCommand: flags.contains(.maskCommand)
-        case .rightOption: flags.contains(.maskAlternate)
-        case .rightControl: flags.contains(.maskControl)
+        case .rightCommand: "MetaRight+F17"
+        case .rightOption: "AltRight+F18"
+        case .rightControl: "ControlRight+F19"
         }
+    }
+
+    var modifierFlag: CGEventFlags {
+        switch self {
+        case .rightCommand: .maskCommand
+        case .rightOption: .maskAlternate
+        case .rightControl: .maskControl
+        }
+    }
+
+    func isPressed(in flags: CGEventFlags) -> Bool {
+        flags.contains(modifierFlag)
     }
 }

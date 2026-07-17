@@ -14,7 +14,7 @@ struct MenuBarView: View {
             Button {
                 model.selectLanguage(mapping)
             } label: {
-                Text("\(mapping.icon) \(mapping.language.name)  \(mapping.hotkey.glyph)")
+                Text("\(mapping.language.displayName)  \(mapping.hotkey.glyph)")
             }
         }
 

@@ -28,8 +28,8 @@ final class AquariumModel: ObservableObject {
 
     func applyConfiguration(forceRestart: Bool = false) {
         guard !isApplying else { return }
-        guard !settings.hasDuplicateHotkeys else {
-            state = .unavailable("Each language needs a different hotkey.")
+        guard !settings.hasConfigurationErrors else {
+            state = .unavailable("Fix the hotkey settings before applying.")
             return
         }
 
@@ -47,8 +47,10 @@ final class AquariumModel: ObservableObject {
                     )
                 }.value
                 state = .ready
-            } catch ShortcutMonitorError.permissionRequired {
-                state = .permissionRequired
+            } catch let error as ShortcutMonitorError {
+                state = .permissionRequired(
+                    error.localizedDescription
+                )
             } catch {
                 state = .unavailable(error.localizedDescription)
             }
