@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test
+        run: swift test
+      - name: Package app
+        run: |
+          chmod +x script/*.sh script/generate_icon.swift
+          ./script/package_app.sh release
+      - name: Verify bundle
+        run: codesign --verify --deep --strict --verbose=2 dist/Aquarium.app
