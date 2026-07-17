@@ -1,18 +1,20 @@
 import Foundation
-import Testing
+import XCTest
 @testable import Aquarium
 
 @MainActor
-@Test func settingsStoreCapsMappingsAtThree() throws {
-    let suiteName = "AquariumTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+final class SettingsStoreTests: XCTestCase {
+    func testSettingsStoreCapsMappingsAtThree() throws {
+        let suiteName = "AquariumTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-    let store = SettingsStore(defaults: defaults)
-    store.addMapping()
-    store.addMapping()
+        let store = SettingsStore(defaults: defaults)
+        store.addMapping()
+        store.addMapping()
 
-    #expect(store.mappings.count == 3)
-    #expect(!store.canAddMapping)
-    #expect(!store.hasDuplicateHotkeys)
+        XCTAssertEqual(store.mappings.count, 3)
+        XCTAssertFalse(store.canAddMapping)
+        XCTAssertFalse(store.hasDuplicateHotkeys)
+    }
 }
