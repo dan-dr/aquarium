@@ -31,11 +31,14 @@ socket. An Aqua Voice update may change that interface.
 
 ```nu
 brew tap dan-dr/tap
-brew install --cask --no-quarantine aquarium
+brew trust --cask dan-dr/tap/aquarium
+brew install --cask aquarium
+xattr -dr com.apple.quarantine /Applications/Aquarium.app
 ```
 
-The initial release is ad-hoc signed, so `--no-quarantine` is required. Once
-release signing and notarization are configured, the flag can be removed.
+The initial release is ad-hoc signed, so the quarantine-clear command is
+required before first launch. Once release signing and notarization are
+configured, that command can be removed.
 
 ### Build locally
 
