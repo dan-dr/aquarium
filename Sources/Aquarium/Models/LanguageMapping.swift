@@ -4,18 +4,15 @@ struct LanguageMapping: Codable, Equatable, Identifiable {
     var id: UUID
     var languageCode: String
     var hotkey: HotkeyOption
-    var aquaShortcut: String
 
     init(
         id: UUID = UUID(),
         languageCode: String,
-        hotkey: HotkeyOption,
-        aquaShortcut: String? = nil
+        hotkey: HotkeyOption
     ) {
         self.id = id
         self.languageCode = languageCode
         self.hotkey = hotkey
-        self.aquaShortcut = aquaShortcut ?? hotkey.suggestedAquaShortcut
     }
 
     var language: LanguageOption {
@@ -31,7 +28,6 @@ struct LanguageMapping: Codable, Equatable, Identifiable {
         case id
         case languageCode
         case hotkey
-        case aquaShortcut
     }
 
     init(from decoder: Decoder) throws {
@@ -43,9 +39,5 @@ struct LanguageMapping: Codable, Equatable, Identifiable {
         )
         languageCode = storedLanguageCode == "zh" ? "cmn" : storedLanguageCode
         hotkey = try container.decode(HotkeyOption.self, forKey: .hotkey)
-        aquaShortcut = try container.decodeIfPresent(
-            String.self,
-            forKey: .aquaShortcut
-        ) ?? hotkey.suggestedAquaShortcut
     }
 }

@@ -9,12 +9,15 @@ Voice activation keys, then keep Aqua's normal interaction model:
 - Release to finish.
 - Double-tap the same key for Aqua Voice hands-free mode.
 
-Suggested mappings:
+Example mappings:
 
-| Trigger | Language | Aqua Voice activation hotkey |
-| --- | --- | --- |
-| Right Command | English | `MetaRight+F17` |
-| Right Option | Hebrew | `AltRight+F18` |
+| Trigger | Language |
+| --- | --- |
+| Right Command | English |
+| Right Option | Hebrew |
+
+Triggers are recorded directly. They can be a modifier-only key, such as
+Right Command, or any normal key combination.
 
 ## Requirements
 
@@ -28,15 +31,13 @@ socket. An Aqua Voice update may change that interface.
 ## Setup
 
 1. In Aqua Voice, enable streaming mode.
-2. Replace Aqua's direct modifier activation hotkeys with complex shortcuts.
-   The shortcut must include the trigger modifier and F13 through F20. The
-   suggested English shortcut is `MetaRight+F17`; Hebrew is `AltRight+F18`.
-3. Open Aquarium Settings and click **Read Aqua Voice Hotkeys**. If detection
-   does not match the intended language order, type the Aqua hotkey into each
-   mapping manually.
-4. Click **Apply**.
+2. Set one Aqua Voice activation hotkey. A complex shortcut such as
+   `Meta+Alt+Control+Shift+F17` avoids conflicts.
+3. Open Aquarium Settings and enter the same shortcut in **Aqua hotkey**.
+4. For each language, choose a language and record any trigger you want.
+5. Click **Apply**.
 
-Aquarium reads Aqua's activation hotkeys but never changes Aqua's settings.
+Aquarium never reads or changes Aqua's settings.
 
 ## Install
 
@@ -76,11 +77,11 @@ same script.
 
 Aquarium:
 
-1. Stores up to three language and modifier-key mappings.
-2. Reads Aqua Voice activation hotkeys, or accepts them manually.
+1. Stores up to three language and arbitrary-hotkey mappings.
+2. Stores the Aqua Voice activation hotkey you enter manually.
 3. Launches Aqua Voice with its local automation socket enabled.
-4. On modifier press, switches Aqua's language and waits for confirmation.
-5. Forwards the configured Aqua hotkey press and release, keeping
+4. On trigger press, switches Aqua's language and waits for confirmation.
+5. Forwards the shared Aqua hotkey press and release, keeping
    hold-to-stream and double-tap hands-free behavior intact.
 
 Aquarium does not capture audio, transcribe speech, or replace Aqua Voice.

@@ -36,6 +36,7 @@ final class AquariumModel: ObservableObject {
         isApplying = true
         state = .starting
         let mappings = settings.mappings
+        let aquaShortcut = settings.aquaShortcut
         let coordinator = coordinator
 
         Task {
@@ -43,6 +44,7 @@ final class AquariumModel: ObservableObject {
                 try await Task.detached(priority: .userInitiated) {
                     try coordinator.apply(
                         mappings: mappings,
+                        aquaShortcut: aquaShortcut,
                         forceRestart: forceRestart
                     )
                 }.value

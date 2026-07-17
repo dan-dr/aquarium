@@ -6,9 +6,13 @@ struct MappingRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Picker("Language", selection: $mapping.languageCode) {
+        HStack(alignment: .bottom, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Choose language")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Choose language", selection: $mapping.languageCode) {
                     ForEach(LanguageOption.all) { language in
                         Text(language.displayName)
                             .tag(language.code)
@@ -16,31 +20,25 @@ struct MappingRow: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
-
-                Picker("Trigger", selection: $mapping.hotkey) {
-                    ForEach(HotkeyOption.allCases) { hotkey in
-                        Text("\(hotkey.glyph) \(hotkey.displayName)")
-                            .tag(hotkey)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 170)
-
-                Button(role: .destructive, action: onRemove) {
-                    Image(systemName: "minus.circle.fill")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!canRemove)
-                .accessibilityLabel("Remove language")
             }
 
-            LabeledContent("Aqua hotkey") {
-                TextField("MetaRight+F17", text: $mapping.aquaShortcut)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 250)
-                    .font(.system(.body, design: .monospaced))
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Choose hotkey")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HotkeyRecorder(hotkey: $mapping.hotkey)
             }
+            .frame(maxWidth: .infinity)
+
+            Button(role: .destructive, action: onRemove) {
+                Image(systemName: "minus.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canRemove)
+            .accessibilityLabel("Remove language")
+            .padding(.bottom, 5)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 5)
     }
 }

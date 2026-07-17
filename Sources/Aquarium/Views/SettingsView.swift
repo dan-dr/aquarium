@@ -12,18 +12,40 @@ struct SettingsView: View {
                         .foregroundStyle(statusColor)
                 }
 
-                Text("Set each complex activation hotkey in Aqua Voice first. Aquarium only reads and relays it. It never changes Aqua Voice settings.")
+                Text("Set one activation hotkey in Aqua Voice, then enter the same hotkey here. Aquarium never changes Aqua Voice settings.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Button("Read Aqua Voice Hotkeys") {
-                    store.readAquaHotkeys()
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Aqua hotkey")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField(
+                        "Aqua hotkey",
+                        text: $store.aquaShortcut,
+                        prompt: Text(SettingsStore.suggestedAquaShortcut)
+                    )
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(maxWidth: .infinity)
                 }
 
-                if let notice = store.aquaHotkeyNotice {
-                    Text(notice)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                if store.hasInvalidAquaShortcut {
+                    Label(
+                        "Enter the Aqua Voice hotkey exactly as Aqua displays it. Example: \(SettingsStore.suggestedAquaShortcut).",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                } else if store.hasAquaHotkeyConflict {
+                    Label(
+                        "The Aqua hotkey must be different from every language hotkey.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.orange)
                 }
             }
 
@@ -39,22 +61,6 @@ struct SettingsView: View {
                 if store.hasDuplicateHotkeys {
                     Label(
                         "Choose a different hotkey for each language.",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.orange)
-                }
-
-                if store.hasDuplicateAquaShortcuts {
-                    Label(
-                        "Choose a different Aqua hotkey for each language.",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.orange)
-                }
-
-                if store.hasInvalidAquaShortcuts {
-                    Label(
-                        "Each Aqua hotkey must include its trigger modifier and F13 through F20.",
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .foregroundStyle(.orange)
@@ -91,7 +97,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 660, height: 560)
+        .frame(width: 640, height: 520)
         .navigationTitle("Aquarium Settings")
     }
 

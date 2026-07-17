@@ -57,12 +57,17 @@ struct SystemAquaHotkeyPoster: AquaHotkeyPosting {
         ) else {
             throw AquaHotkeyPosterError.eventCreationFailed
         }
-        event.flags = shortcut.flags
+        event.flags = shortcut.isModifierOnly && !keyDown ? [] : shortcut.flags
         event.post(tap: .cghidEventTap)
     }
 }
 
 final class HotkeyRelay {
+    private struct ActiveRelay {
+        let mapping: LanguageMapping
+        let aquaShortcut: String
+    }
+
     private let languageSelector: any AquaLanguageSelecting
     private let hotkeyPoster: any AquaHotkeyPosting
     private let lock = NSLock()
@@ -74,8 +79,9 @@ final class HotkeyRelay {
         label: "com.danrosenshain.Aquarium.hotkey-relay",
         qos: .userInteractive
     )
-    private var mappingsByKeyCode: [Int64: LanguageMapping] = [:]
-    private var pressTracker = ModifierPressTracker()
+    private var mappings: [LanguageMapping] = []
+    private var aquaShortcut = ""
+    private var activeRelays: [UUID: ActiveRelay] = [:]
 
     init(
         languageSelector: any AquaLanguageSelecting,
@@ -85,43 +91,43 @@ final class HotkeyRelay {
         self.hotkeyPoster = hotkeyPoster
     }
 
-    func update(mappings: [LanguageMapping]) {
+    func update(mappings: [LanguageMapping], aquaShortcut: String) {
         lock.lock()
-        let pressedKeyCodes = pressTracker.reset()
-        let releases = pressedKeyCodes.compactMap { keyCode in
-            mappingsByKeyCode[keyCode]?.aquaShortcut
-        }
-        mappingsByKeyCode = Dictionary(
-            uniqueKeysWithValues: mappings.map { ($0.hotkey.keyCode, $0) }
-        )
+        let releases = Array(activeRelays.values)
+        activeRelays.removeAll()
+        self.mappings = mappings
+        self.aquaShortcut = aquaShortcut
         lock.unlock()
 
         relayQueue.async { [weak self] in
             guard let self else { return }
-            releases.forEach { self.relayRelease($0) }
+            releases.forEach { self.relayRelease($0.aquaShortcut) }
         }
     }
 
-    func handle(keyCode: Int64, flags: CGEventFlags) {
+    func handle(
+        type: CGEventType,
+        keyCode: Int64,
+        flags: CGEventFlags,
+        isRepeat: Bool = false
+    ) {
         lock.lock()
-        guard let mapping = mappingsByKeyCode[keyCode] else {
-            lock.unlock()
-            return
-        }
-        let transition = pressTracker.transition(
+        let transition = transition(
+            type: type,
             keyCode: keyCode,
-            modifierIsPresent: mapping.hotkey.isPressed(in: flags)
+            flags: flags,
+            isRepeat: isRepeat
         )
         lock.unlock()
 
         switch transition {
-        case .pressed:
+        case let .pressed(active):
             relayQueue.async { [weak self] in
-                self?.relayPress(mapping)
+                self?.relayPress(active)
             }
-        case .released:
+        case let .released(active):
             relayQueue.async { [weak self] in
-                self?.relayRelease(mapping.aquaShortcut)
+                self?.relayRelease(active.aquaShortcut)
             }
         case .ignored:
             break
@@ -130,15 +136,13 @@ final class HotkeyRelay {
 
     func resetPressedKeys() {
         lock.lock()
-        let keyCodes = pressTracker.reset()
-        let shortcuts = keyCodes.compactMap {
-            mappingsByKeyCode[$0]?.aquaShortcut
-        }
+        let releases = Array(activeRelays.values)
+        activeRelays.removeAll()
         lock.unlock()
 
         relayQueue.async { [weak self] in
             guard let self else { return }
-            shortcuts.forEach { self.relayRelease($0) }
+            releases.forEach { self.relayRelease($0.aquaShortcut) }
         }
     }
 
@@ -146,19 +150,86 @@ final class HotkeyRelay {
         relayQueue.sync {}
     }
 
-    private func relayPress(_ mapping: LanguageMapping) {
+    private enum RelayTransition {
+        case pressed(ActiveRelay)
+        case released(ActiveRelay)
+        case ignored
+    }
+
+    private func transition(
+        type: CGEventType,
+        keyCode: Int64,
+        flags: CGEventFlags,
+        isRepeat: Bool
+    ) -> RelayTransition {
+        switch type {
+        case .flagsChanged:
+            if let active = activeRelays.values.first(where: {
+                $0.mapping.hotkey.isModifierOnly
+                    && $0.mapping.hotkey.keyCode == keyCode
+            }) {
+                activeRelays.removeValue(forKey: active.mapping.id)
+                return .released(active)
+            }
+
+            guard let mapping = mappings.first(where: {
+                $0.hotkey.isModifierOnly
+                    && $0.hotkey.keyCode == keyCode
+                    && $0.hotkey.isPressed(in: flags)
+            }) else {
+                return .ignored
+            }
+            let active = ActiveRelay(
+                mapping: mapping,
+                aquaShortcut: aquaShortcut
+            )
+            activeRelays[mapping.id] = active
+            return .pressed(active)
+
+        case .keyDown:
+            guard !isRepeat else { return .ignored }
+            guard let mapping = mappings.first(where: {
+                !$0.hotkey.isModifierOnly
+                    && $0.hotkey.matches(keyCode: keyCode, flags: flags)
+                    && activeRelays[$0.id] == nil
+            }) else {
+                return .ignored
+            }
+            let active = ActiveRelay(
+                mapping: mapping,
+                aquaShortcut: aquaShortcut
+            )
+            activeRelays[mapping.id] = active
+            return .pressed(active)
+
+        case .keyUp:
+            guard let active = activeRelays.values.first(where: {
+                !$0.mapping.hotkey.isModifierOnly
+                    && $0.mapping.hotkey.keyCode == keyCode
+            }) else {
+                return .ignored
+            }
+            activeRelays.removeValue(forKey: active.mapping.id)
+            return .released(active)
+
+        default:
+            return .ignored
+        }
+    }
+
+    private func relayPress(_ active: ActiveRelay) {
         do {
-            try languageSelector.setLanguage(mapping.languageCode)
+            try languageSelector.setLanguage(active.mapping.languageCode)
             try hotkeyPoster.post(
-                shortcut: mapping.aquaShortcut,
+                shortcut: active.aquaShortcut,
                 keyDown: true
             )
             logger.info(
-                "Relayed \(mapping.hotkey.rawValue, privacy: .public) as \(mapping.aquaShortcut, privacy: .public) after selecting \(mapping.languageCode, privacy: .public)"
+                "Relayed \(active.mapping.hotkey.displayName, privacy: .public) as \(active.aquaShortcut, privacy: .public) after selecting \(active.mapping.languageCode, privacy: .public)"
             )
         } catch {
             logger.error(
-                "Relay failed for \(mapping.hotkey.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Relay failed for \(active.mapping.hotkey.displayName, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -166,9 +237,7 @@ final class HotkeyRelay {
     private func relayRelease(_ shortcut: String) {
         do {
             try hotkeyPoster.post(shortcut: shortcut, keyDown: false)
-            logger.debug(
-                "Released relay \(shortcut, privacy: .public)"
-            )
+            logger.debug("Released relay \(shortcut, privacy: .public)")
         } catch {
             logger.error(
                 "Relay release failed for \(shortcut, privacy: .public): \(error.localizedDescription, privacy: .public)"
@@ -196,8 +265,8 @@ final class ShortcutMonitor {
         )
     }
 
-    func update(mappings: [LanguageMapping]) {
-        relay.update(mappings: mappings)
+    func update(mappings: [LanguageMapping], aquaShortcut: String) {
+        relay.update(mappings: mappings, aquaShortcut: aquaShortcut)
     }
 
     func start() throws {
@@ -216,6 +285,8 @@ final class ShortcutMonitor {
         }
 
         let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+            | CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.keyUp.rawValue)
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cghidEventTap,
@@ -233,7 +304,7 @@ final class ShortcutMonitor {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        logger.info("Global modifier monitor started")
+        logger.info("Global hotkey monitor started")
     }
 
     private static let eventCallback: CGEventTapCallBack = {
@@ -253,41 +324,16 @@ final class ShortcutMonitor {
             return Unmanaged.passUnretained(event)
         }
 
-        guard type == .flagsChanged else {
+        guard type == .flagsChanged || type == .keyDown || type == .keyUp else {
             return Unmanaged.passUnretained(event)
         }
         _ = proxy
         monitor.relay.handle(
+            type: type,
             keyCode: event.getIntegerValueField(.keyboardEventKeycode),
-            flags: event.flags
+            flags: event.flags,
+            isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         )
         return Unmanaged.passUnretained(event)
-    }
-}
-
-enum ModifierTransition: Equatable {
-    case pressed
-    case released
-    case ignored
-}
-
-struct ModifierPressTracker {
-    private var pressedKeys = Set<Int64>()
-
-    mutating func transition(
-        keyCode: Int64,
-        modifierIsPresent: Bool
-    ) -> ModifierTransition {
-        if pressedKeys.remove(keyCode) != nil {
-            return .released
-        }
-        guard modifierIsPresent else { return .ignored }
-        pressedKeys.insert(keyCode)
-        return .pressed
-    }
-
-    mutating func reset() -> Set<Int64> {
-        defer { pressedKeys.removeAll() }
-        return pressedKeys
     }
 }

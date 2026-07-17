@@ -16,24 +16,6 @@ final class HotkeyOptionTests: XCTestCase {
         XCTAssertFalse(HotkeyOption.rightCommand.isPressed(in: []))
     }
 
-    func testPhysicalReleaseClearsRightModifierState() {
-        var tracker = ModifierPressTracker()
-        let keyCode = HotkeyOption.rightCommand.keyCode
-
-        XCTAssertEqual(
-            tracker.transition(keyCode: keyCode, modifierIsPresent: true),
-            .pressed
-        )
-        XCTAssertEqual(
-            tracker.transition(keyCode: keyCode, modifierIsPresent: true),
-            .released
-        )
-        XCTAssertEqual(
-            tracker.transition(keyCode: keyCode, modifierIsPresent: false),
-            .ignored
-        )
-    }
-
     func testLanguageListMatchesAquaPublishedCount() {
         XCTAssertEqual(LanguageOption.all.count, 50)
         XCTAssertEqual(
@@ -45,35 +27,58 @@ final class HotkeyOptionTests: XCTestCase {
         XCTAssertFalse(LanguageOption.all.contains { $0.code == "zh" })
     }
 
-    func testRelayShortcutsUseAquaSupportedFunctionKeys() {
-        XCTAssertEqual(
-            HotkeyOption.rightCommand.suggestedAquaShortcut,
-            "MetaRight+F17"
+    func testArbitraryKeyboardChordMatchesItsRecordedModifiers() {
+        let hotkey = HotkeyOption.keyboard(
+            keyCode: 9,
+            modifiers: [.maskCommand, .maskControl],
+            keyLabel: "V"
         )
-        XCTAssertEqual(
-            HotkeyOption.rightOption.suggestedAquaShortcut,
-            "AltRight+F18"
+
+        XCTAssertEqual(hotkey.displayName, "⌃⌘V")
+        XCTAssertTrue(
+            hotkey.matches(
+                keyCode: 9,
+                flags: [.maskCommand, .maskControl]
+            )
         )
-        XCTAssertEqual(
-            HotkeyOption.rightControl.suggestedAquaShortcut,
-            "ControlRight+F19"
-        )
+        XCTAssertFalse(hotkey.matches(keyCode: 9, flags: .maskCommand))
     }
 
-    func testAquaShortcutParsesFunctionKeyAndModifiers() throws {
-        let shortcut = try XCTUnwrap(AquaShortcut("MetaRight+Shift+F17"))
+    func testLegacyModifierHotkeyStillDecodes() throws {
+        let data = try XCTUnwrap("\"MetaRight\"".data(using: .utf8))
+        let hotkey = try JSONDecoder().decode(HotkeyOption.self, from: data)
 
-        XCTAssertEqual(shortcut.keyCode, 64)
+        XCTAssertEqual(hotkey, .rightCommand)
+    }
+
+    func testAquaShortcutParsesArbitraryKeyAndModifiers() throws {
+        let shortcut = try XCTUnwrap(AquaShortcut("Meta+Control+KeyV"))
+
+        XCTAssertEqual(shortcut.keyCode, 9)
         XCTAssertTrue(shortcut.flags.contains(.maskCommand))
-        XCTAssertTrue(shortcut.flags.contains(.maskShift))
-        XCTAssertTrue(shortcut.includesTrigger(.rightCommand))
-        XCTAssertFalse(shortcut.includesTrigger(.rightOption))
+        XCTAssertTrue(shortcut.flags.contains(.maskControl))
+        XCTAssertFalse(shortcut.isModifierOnly)
     }
 
-    func testAquaShortcutRejectsModifierOnlyAndUnsupportedKeys() {
-        XCTAssertNil(AquaShortcut("MetaRight"))
-        XCTAssertNil(AquaShortcut("MetaRight+Space"))
-        XCTAssertNil(AquaShortcut("F17"))
+    func testAquaShortcutAcceptsModifierOnlyAndBareKeys() throws {
+        let modifier = try XCTUnwrap(AquaShortcut("MetaRight"))
+        let bareKey = try XCTUnwrap(AquaShortcut("Space"))
+        let leftChord = try XCTUnwrap(AquaShortcut("MetaLeft+CapsLock"))
+
+        XCTAssertTrue(modifier.isModifierOnly)
+        XCTAssertEqual(modifier.keyCode, 54)
+        XCTAssertFalse(bareKey.isModifierOnly)
+        XCTAssertEqual(bareKey.keyCode, 49)
+        XCTAssertEqual(leftChord.keyCode, 57)
+        XCTAssertTrue(leftChord.flags.contains(.maskCommand))
+        XCTAssertNil(AquaShortcut("Hyperdrive"))
+    }
+
+    func testAquaShortcutDetectsTriggerConflict() throws {
+        let shortcut = try XCTUnwrap(AquaShortcut("MetaRight"))
+
+        XCTAssertTrue(shortcut.conflicts(with: .rightCommand))
+        XCTAssertFalse(shortcut.conflicts(with: .rightOption))
     }
 
     func testLegacyMandarinCodeMigratesToAquaCode() throws {

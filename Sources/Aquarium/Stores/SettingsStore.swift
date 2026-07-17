@@ -4,22 +4,31 @@ import Foundation
 @MainActor
 final class SettingsStore: ObservableObject {
     static let maximumMappings = 3
+    static let suggestedAquaShortcut = "Meta+Alt+Control+Shift+F17"
 
     @Published var mappings: [LanguageMapping] {
         didSet { save() }
     }
-    @Published private(set) var aquaHotkeyNotice: String?
+    @Published var aquaShortcut: String {
+        didSet {
+            defaults.set(aquaShortcut, forKey: aquaShortcutStorageKey)
+        }
+    }
 
     private let defaults: UserDefaults
-    private let aquaSettingsFile: AquaSettingsFile
     private let storageKey = "languageMappings"
+    private let aquaShortcutStorageKey = "aquaShortcut"
 
-    init(
-        defaults: UserDefaults = .standard,
-        aquaSettingsFile: AquaSettingsFile = .init()
-    ) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.aquaSettingsFile = aquaSettingsFile
+        let storedAquaShortcut = defaults
+            .string(forKey: aquaShortcutStorageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let storedAquaShortcut, !storedAquaShortcut.isEmpty {
+            aquaShortcut = storedAquaShortcut
+        } else {
+            aquaShortcut = Self.suggestedAquaShortcut
+        }
         if
             let data = defaults.data(forKey: storageKey),
             let stored = try? JSONDecoder().decode(
@@ -31,7 +40,6 @@ final class SettingsStore: ObservableObject {
             mappings = Array(stored.prefix(Self.maximumMappings))
         } else {
             mappings = LanguageMapping.defaults
-            applyDetectedAquaHotkeys(showNotice: false)
         }
     }
 
@@ -40,34 +48,29 @@ final class SettingsStore: ObservableObject {
     }
 
     var hasDuplicateHotkeys: Bool {
-        Set(mappings.map(\.hotkey)).count != mappings.count
+        Set(mappings.map(\.hotkey.id)).count != mappings.count
     }
 
-    var hasDuplicateAquaShortcuts: Bool {
-        Set(mappings.map { $0.aquaShortcut.lowercased() }).count
-            != mappings.count
+    var hasInvalidAquaShortcut: Bool {
+        AquaShortcut(aquaShortcut) == nil
     }
 
-    var hasInvalidAquaShortcuts: Bool {
-        mappings.contains { mapping in
-            guard let shortcut = AquaShortcut(mapping.aquaShortcut) else {
-                return true
-            }
-            return !shortcut.includesTrigger(mapping.hotkey)
-        }
+    var hasAquaHotkeyConflict: Bool {
+        guard let shortcut = AquaShortcut(aquaShortcut) else { return false }
+        return mappings.contains { shortcut.conflicts(with: $0.hotkey) }
     }
 
     var hasConfigurationErrors: Bool {
         hasDuplicateHotkeys
-            || hasDuplicateAquaShortcuts
-            || hasInvalidAquaShortcuts
+            || hasInvalidAquaShortcut
+            || hasAquaHotkeyConflict
     }
 
     func addMapping() {
         guard canAddMapping else { return }
-        let usedHotkeys = Set(mappings.map(\.hotkey))
-        guard let hotkey = HotkeyOption.allCases.first(where: {
-            !usedHotkeys.contains($0)
+        let usedHotkeys = Set(mappings.map(\.hotkey.id))
+        guard let hotkey = HotkeyOption.suggestedTriggers.first(where: {
+            !usedHotkeys.contains($0.id)
         }) else { return }
 
         let usedLanguages = Set(mappings.map(\.languageCode))
@@ -77,8 +80,7 @@ final class SettingsStore: ObservableObject {
         mappings.append(
             .init(
                 languageCode: language.code,
-                hotkey: hotkey,
-                aquaShortcut: hotkey.suggestedAquaShortcut
+                hotkey: hotkey
             )
         )
     }
@@ -90,11 +92,7 @@ final class SettingsStore: ObservableObject {
 
     func reset() {
         mappings = LanguageMapping.defaults
-        applyDetectedAquaHotkeys(showNotice: false)
-    }
-
-    func readAquaHotkeys() {
-        applyDetectedAquaHotkeys(showNotice: true)
+        aquaShortcut = Self.suggestedAquaShortcut
     }
 
     private func save() {
@@ -102,26 +100,4 @@ final class SettingsStore: ObservableObject {
         defaults.set(data, forKey: storageKey)
     }
 
-    private func applyDetectedAquaHotkeys(showNotice: Bool) {
-        do {
-            let shortcuts = try aquaSettingsFile.activationShortcuts()
-            guard !shortcuts.isEmpty else {
-                if showNotice {
-                    aquaHotkeyNotice = "No Aqua Voice activation hotkeys found."
-                }
-                return
-            }
-            for index in mappings.indices {
-                guard shortcuts.indices.contains(index) else { break }
-                mappings[index].aquaShortcut = shortcuts[index]
-            }
-            if showNotice {
-                aquaHotkeyNotice = "Read \(min(shortcuts.count, mappings.count)) Aqua Voice hotkey(s)."
-            }
-        } catch {
-            if showNotice {
-                aquaHotkeyNotice = error.localizedDescription
-            }
-        }
-    }
 }

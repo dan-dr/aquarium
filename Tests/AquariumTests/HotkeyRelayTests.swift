@@ -9,13 +9,18 @@ final class HotkeyRelayTests: XCTestCase {
             languageSelector: RecordingLanguageSelector(recorder: recorder),
             hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
         )
-        relay.update(mappings: LanguageMapping.defaults)
+        relay.update(
+            mappings: LanguageMapping.defaults,
+            aquaShortcut: "Meta+Alt+Control+Shift+F17"
+        )
 
         relay.handle(
+            type: .flagsChanged,
             keyCode: HotkeyOption.rightOption.keyCode,
             flags: .maskAlternate
         )
         relay.handle(
+            type: .flagsChanged,
             keyCode: HotkeyOption.rightOption.keyCode,
             flags: .maskAlternate
         )
@@ -25,9 +30,79 @@ final class HotkeyRelayTests: XCTestCase {
             recorder.events,
             [
                 "language:he",
-                "down:AltRight+F18",
-                "up:AltRight+F18",
+                "down:Meta+Alt+Control+Shift+F17",
+                "up:Meta+Alt+Control+Shift+F17",
             ]
+        )
+    }
+
+    func testArbitraryKeyboardChordRelaysPressAndRelease() {
+        let recorder = RelayRecorder()
+        let relay = HotkeyRelay(
+            languageSelector: RecordingLanguageSelector(recorder: recorder),
+            hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
+        )
+        let trigger = HotkeyOption.keyboard(
+            keyCode: 0,
+            modifiers: [.maskCommand, .maskShift],
+            keyLabel: "A"
+        )
+        relay.update(
+            mappings: [.init(languageCode: "en", hotkey: trigger)],
+            aquaShortcut: "Control+F18"
+        )
+
+        relay.handle(
+            type: .keyDown,
+            keyCode: 0,
+            flags: [.maskCommand, .maskShift]
+        )
+        relay.handle(
+            type: .keyUp,
+            keyCode: 0,
+            flags: [.maskCommand, .maskShift]
+        )
+        relay.waitUntilIdle()
+
+        XCTAssertEqual(
+            recorder.events,
+            ["language:en", "down:Control+F18", "up:Control+F18"]
+        )
+    }
+
+    func testRepeatedKeyDownDoesNotStartASecondRelay() {
+        let recorder = RelayRecorder()
+        let relay = HotkeyRelay(
+            languageSelector: RecordingLanguageSelector(recorder: recorder),
+            hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
+        )
+        let trigger = HotkeyOption.keyboard(
+            keyCode: 49,
+            modifiers: .maskControl,
+            keyLabel: "Space"
+        )
+        relay.update(
+            mappings: [.init(languageCode: "he", hotkey: trigger)],
+            aquaShortcut: "F17"
+        )
+
+        relay.handle(
+            type: .keyDown,
+            keyCode: 49,
+            flags: .maskControl
+        )
+        relay.handle(
+            type: .keyDown,
+            keyCode: 49,
+            flags: .maskControl,
+            isRepeat: true
+        )
+        relay.handle(type: .keyUp, keyCode: 49, flags: .maskControl)
+        relay.waitUntilIdle()
+
+        XCTAssertEqual(
+            recorder.events,
+            ["language:he", "down:F17", "up:F17"]
         )
     }
 }

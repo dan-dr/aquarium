@@ -35,9 +35,13 @@ final class AquaCoordinator {
 
     func apply(
         mappings: [LanguageMapping],
+        aquaShortcut: String,
         forceRestart: Bool = false
     ) throws {
-        monitor.update(mappings: mappings)
+        monitor.update(
+            mappings: mappings,
+            aquaShortcut: aquaShortcut
+        )
 
         if forceRestart || !isConnected {
             try restartAqua()

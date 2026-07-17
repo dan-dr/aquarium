@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- Replace fixed language-trigger choices with a recorder that accepts
+  modifier-only keys and arbitrary keyboard chords.
+- Use one shared Aqua Voice relay hotkey for every language mapping.
+- Let the user enter the shared Aqua hotkey directly, with syntax and conflict
+  validation.
+- Simplify each language row to language and hotkey controls.
+
 ## 0.2.0
 
 - Relay physical modifiers to hidden Aqua Voice shortcuts after the language
