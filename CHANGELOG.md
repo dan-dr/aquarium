@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- Record the shared Aqua Voice hotkey with the same native recorder used for
+  language triggers, including pure multi-modifier chords.
+- Consume configured language triggers and mark injected relay events so the
+  original key and Aquarium's synthetic events cannot recurse or leak through.
+- Emit physical modifier transitions through the global HID stream so Aqua's
+  native shortcut state machine receives reliable press and release events.
+- Preserve Aqua's double-tap hands-free timing by reusing a fresh language
+  selection, and continue relaying through transient language-socket failures.
+- Document the tested Aqua automation and native bridge protocol boundaries.
+
 ## 0.3.0
 
 - Replace fixed language-trigger choices with a recorder that accepts

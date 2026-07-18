@@ -51,6 +51,34 @@ final class HotkeyOptionTests: XCTestCase {
         XCTAssertEqual(hotkey, .rightCommand)
     }
 
+    func testPureModifierChordCanBeRecorded() throws {
+        let hotkey = try XCTUnwrap(
+            HotkeyOption.modifierChord(
+                keyCode: 61,
+                modifiers: [
+                    .maskCommand,
+                    .maskAlternate,
+                    .maskControl,
+                    .maskShift,
+                ]
+            )
+        )
+
+        XCTAssertTrue(hotkey.isModifierOnly)
+        XCTAssertEqual(hotkey.keyCode, 61)
+        XCTAssertEqual(hotkey.displayName, "⌃⌥⇧⌘")
+        XCTAssertTrue(
+            hotkey.isPressed(
+                in: [
+                    .maskCommand,
+                    .maskAlternate,
+                    .maskControl,
+                    .maskShift,
+                ]
+            )
+        )
+    }
+
     func testAquaShortcutParsesArbitraryKeyAndModifiers() throws {
         let shortcut = try XCTUnwrap(AquaShortcut("Meta+Control+KeyV"))
 
@@ -72,6 +100,16 @@ final class HotkeyOptionTests: XCTestCase {
         XCTAssertEqual(leftChord.keyCode, 57)
         XCTAssertTrue(leftChord.flags.contains(.maskCommand))
         XCTAssertNil(AquaShortcut("Hyperdrive"))
+    }
+
+    func testAquaShortcutMigratesPureModifierChord() throws {
+        let shortcut = try XCTUnwrap(
+            AquaShortcut("Shift+Meta+Control+Option")
+        )
+
+        XCTAssertTrue(shortcut.isModifierOnly)
+        XCTAssertEqual(shortcut.hotkey.displayName, "⌃⌥⇧⌘")
+        XCTAssertEqual(shortcut.hotkey.keyCode, 58)
     }
 
     func testAquaShortcutDetectsTriggerConflict() throws {

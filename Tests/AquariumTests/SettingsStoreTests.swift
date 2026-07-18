@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class SettingsStoreTests: XCTestCase {
-    func testBlankStoredAquaHotkeyUsesEditableSuggestion() throws {
+    func testBlankStoredAquaHotkeyUsesRecordedSuggestion() throws {
         let suiteName = "AquariumTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -13,8 +13,8 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(defaults: defaults)
 
         XCTAssertEqual(
-            store.aquaShortcut,
-            SettingsStore.suggestedAquaShortcut
+            store.aquaHotkey,
+            SettingsStore.suggestedAquaHotkey
         )
         XCTAssertFalse(store.hasConfigurationErrors)
     }
@@ -39,9 +39,36 @@ final class SettingsStoreTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = SettingsStore(defaults: defaults)
 
-        store.aquaShortcut = "MetaRight"
+        store.aquaHotkey = .rightCommand
 
         XCTAssertTrue(store.hasAquaHotkeyConflict)
         XCTAssertTrue(store.hasConfigurationErrors)
+    }
+
+    func testLegacyTextAquaHotkeyMigratesToRecordedHotkey() throws {
+        let suiteName = "AquariumTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("Control+F18", forKey: "aquaShortcut")
+
+        let store = SettingsStore(defaults: defaults)
+
+        XCTAssertEqual(store.aquaHotkey.displayName, "⌃F18")
+        XCTAssertEqual(store.aquaHotkey.keyCode, 79)
+    }
+
+    func testLegacyPureModifierAquaHotkeyMigrates() throws {
+        let suiteName = "AquariumTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            "Shift+Meta+Control+Option",
+            forKey: "aquaShortcut"
+        )
+
+        let store = SettingsStore(defaults: defaults)
+
+        XCTAssertTrue(store.aquaHotkey.isModifierOnly)
+        XCTAssertEqual(store.aquaHotkey.displayName, "⌃⌥⇧⌘")
     }
 }

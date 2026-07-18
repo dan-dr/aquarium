@@ -3,6 +3,91 @@ import XCTest
 @testable import Aquarium
 
 final class HotkeyRelayTests: XCTestCase {
+    func testInjectedRelayEventsCarryAquariumMarker() throws {
+        let event = try XCTUnwrap(
+            CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: 64,
+                keyDown: true
+            )
+        )
+
+        XCTAssertFalse(AquariumInjectedEvent.matches(event))
+        AquariumInjectedEvent.mark(event)
+        XCTAssertTrue(AquariumInjectedEvent.matches(event))
+    }
+
+    func testPureModifierRelayEmitsEveryPhysicalTransition() throws {
+        let hotkey = try XCTUnwrap(
+            HotkeyOption.modifierChord(
+                keyCode: 58,
+                modifiers: [
+                    .maskCommand,
+                    .maskAlternate,
+                    .maskControl,
+                    .maskShift,
+                ]
+            )
+        )
+
+        let down = AquaHotkeyEventSequence.steps(
+            for: hotkey,
+            keyDown: true
+        )
+        let up = AquaHotkeyEventSequence.steps(
+            for: hotkey,
+            keyDown: false
+        )
+
+        XCTAssertEqual(down.map(\.keyCode), [55, 58, 59, 56])
+        XCTAssertEqual(
+            down.map(\.flags),
+            [
+                [.maskCommand],
+                [.maskCommand, .maskAlternate],
+                [.maskCommand, .maskAlternate, .maskControl],
+                [
+                    .maskCommand,
+                    .maskAlternate,
+                    .maskControl,
+                    .maskShift,
+                ],
+            ]
+        )
+        XCTAssertEqual(up.map(\.keyCode), [56, 59, 58, 55])
+        XCTAssertEqual(up.last?.flags, [])
+        XCTAssertTrue((down + up).allSatisfy { $0.type == .flagsChanged })
+    }
+
+    func testMatchingLanguageTriggerIsConsumed() {
+        let recorder = RelayRecorder()
+        let relay = HotkeyRelay(
+            languageSelector: RecordingLanguageSelector(recorder: recorder),
+            hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
+        )
+        relay.update(
+            mappings: LanguageMapping.defaults,
+            aquaHotkey: .suggestedAquaRelay
+        )
+
+        XCTAssertTrue(
+            relay.handle(
+                type: .flagsChanged,
+                keyCode: HotkeyOption.rightCommand.keyCode,
+                flags: .maskCommand
+            )
+        )
+        XCTAssertFalse(
+            relay.handle(
+                type: .keyDown,
+                keyCode: 0,
+                flags: []
+            )
+        )
+        relay.resetPressedKeys()
+        relay.waitUntilIdle()
+    }
+
     func testLanguageChangesBeforeRelayPressAndRelease() {
         let recorder = RelayRecorder()
         let relay = HotkeyRelay(
@@ -11,7 +96,7 @@ final class HotkeyRelayTests: XCTestCase {
         )
         relay.update(
             mappings: LanguageMapping.defaults,
-            aquaShortcut: "Meta+Alt+Control+Shift+F17"
+            aquaHotkey: .suggestedAquaRelay
         )
 
         relay.handle(
@@ -30,8 +115,8 @@ final class HotkeyRelayTests: XCTestCase {
             recorder.events,
             [
                 "language:he",
-                "down:Meta+Alt+Control+Shift+F17",
-                "up:Meta+Alt+Control+Shift+F17",
+                "down:⌃⌥⇧⌘F17",
+                "up:⌃⌥⇧⌘F17",
             ]
         )
     }
@@ -49,7 +134,11 @@ final class HotkeyRelayTests: XCTestCase {
         )
         relay.update(
             mappings: [.init(languageCode: "en", hotkey: trigger)],
-            aquaShortcut: "Control+F18"
+            aquaHotkey: .keyboard(
+                keyCode: 79,
+                modifiers: .maskControl,
+                keyLabel: "F18"
+            )
         )
 
         relay.handle(
@@ -66,7 +155,7 @@ final class HotkeyRelayTests: XCTestCase {
 
         XCTAssertEqual(
             recorder.events,
-            ["language:en", "down:Control+F18", "up:Control+F18"]
+            ["language:en", "down:⌃F18", "up:⌃F18"]
         )
     }
 
@@ -83,7 +172,11 @@ final class HotkeyRelayTests: XCTestCase {
         )
         relay.update(
             mappings: [.init(languageCode: "he", hotkey: trigger)],
-            aquaShortcut: "F17"
+            aquaHotkey: .keyboard(
+                keyCode: 64,
+                modifiers: [],
+                keyLabel: "F17"
+            )
         )
 
         relay.handle(
@@ -105,6 +198,72 @@ final class HotkeyRelayTests: XCTestCase {
             ["language:he", "down:F17", "up:F17"]
         )
     }
+
+    func testDoubleTapReusesFreshLanguageSelection() {
+        let recorder = RelayRecorder()
+        let relay = HotkeyRelay(
+            languageSelector: RecordingLanguageSelector(recorder: recorder),
+            hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
+        )
+        relay.update(
+            mappings: LanguageMapping.defaults,
+            aquaHotkey: .suggestedAquaRelay
+        )
+
+        for _ in 0..<2 {
+            relay.handle(
+                type: .flagsChanged,
+                keyCode: HotkeyOption.rightCommand.keyCode,
+                flags: .maskCommand
+            )
+            relay.handle(
+                type: .flagsChanged,
+                keyCode: HotkeyOption.rightCommand.keyCode,
+                flags: []
+            )
+        }
+        relay.waitUntilIdle()
+
+        XCTAssertEqual(
+            recorder.events,
+            [
+                "language:en",
+                "down:⌃⌥⇧⌘F17",
+                "up:⌃⌥⇧⌘F17",
+                "down:⌃⌥⇧⌘F17",
+                "up:⌃⌥⇧⌘F17",
+            ]
+        )
+    }
+
+    func testRelayStillStartsWhenLanguageSelectionFails() {
+        let recorder = RelayRecorder()
+        let relay = HotkeyRelay(
+            languageSelector: FailingLanguageSelector(),
+            hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
+        )
+        relay.update(
+            mappings: LanguageMapping.defaults,
+            aquaHotkey: .suggestedAquaRelay
+        )
+
+        relay.handle(
+            type: .flagsChanged,
+            keyCode: HotkeyOption.rightCommand.keyCode,
+            flags: .maskCommand
+        )
+        relay.handle(
+            type: .flagsChanged,
+            keyCode: HotkeyOption.rightCommand.keyCode,
+            flags: []
+        )
+        relay.waitUntilIdle()
+
+        XCTAssertEqual(
+            recorder.events,
+            ["down:⌃⌥⇧⌘F17", "up:⌃⌥⇧⌘F17"]
+        )
+    }
 }
 
 private final class RelayRecorder {
@@ -119,12 +278,20 @@ private struct RecordingLanguageSelector: AquaLanguageSelecting {
     }
 }
 
+private struct FailingLanguageSelector: AquaLanguageSelecting {
+    struct Failure: Error {}
+
+    func setLanguage(_: String) throws {
+        throw Failure()
+    }
+}
+
 private struct RecordingHotkeyPoster: AquaHotkeyPosting {
     let recorder: RelayRecorder
 
-    func post(shortcut: String, keyDown: Bool) throws {
+    func post(hotkey: HotkeyOption, keyDown: Bool) throws {
         recorder.events.append(
-            "\(keyDown ? "down" : "up"):\(shortcut)"
+            "\(keyDown ? "down" : "up"):\(hotkey.displayName)"
         )
     }
 }

@@ -66,6 +66,16 @@ struct HotkeyOption: Codable, Hashable, Identifiable {
         flag: .maskControl,
         label: "Right Control"
     )
+    static let suggestedAquaRelay = keyboard(
+        keyCode: 64,
+        modifiers: [
+            .maskCommand,
+            .maskAlternate,
+            .maskControl,
+            .maskShift,
+        ],
+        keyLabel: "F17"
+    )
     static let suggestedTriggers = [rightCommand, rightOption, rightControl]
 
     static func keyboard(
@@ -85,6 +95,29 @@ struct HotkeyOption: Codable, Hashable, Identifiable {
 
     static func modifierOnly(keyCode: Int64) -> HotkeyOption? {
         modifierHotkeys[keyCode]
+    }
+
+    static func modifierChord(
+        keyCode: Int64,
+        modifiers: CGEventFlags
+    ) -> HotkeyOption? {
+        guard let physicalKey = modifierHotkeys[keyCode] else { return nil }
+        let recordedModifiers = modifiers.intersection(supportedModifierMask)
+        guard
+            !recordedModifiers.isEmpty,
+            recordedModifiers.contains(physicalKey.modifiers)
+        else {
+            return nil
+        }
+        if recordedModifiers == physicalKey.modifiers {
+            return physicalKey
+        }
+        return HotkeyOption(
+            keyCode: keyCode,
+            modifiersRawValue: recordedModifiers.rawValue,
+            keyLabel: modifierGlyphs(for: recordedModifiers),
+            kind: .modifierOnly
+        )
     }
 
     static func eventFlags(from flags: NSEvent.ModifierFlags) -> CGEventFlags {

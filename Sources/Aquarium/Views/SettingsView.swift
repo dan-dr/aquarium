@@ -12,7 +12,7 @@ struct SettingsView: View {
                         .foregroundStyle(statusColor)
                 }
 
-                Text("Set one activation hotkey in Aqua Voice, then enter the same hotkey here. Aquarium never changes Aqua Voice settings.")
+                Text("Set one activation hotkey in Aqua Voice, then record the same hotkey here. A modifier-only chord avoids typing in other apps.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
@@ -21,25 +21,10 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    TextField(
-                        "Aqua hotkey",
-                        text: $store.aquaShortcut,
-                        prompt: Text(SettingsStore.suggestedAquaShortcut)
-                    )
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity)
+                    HotkeyRecorder(hotkey: $store.aquaHotkey)
                 }
 
-                if store.hasInvalidAquaShortcut {
-                    Label(
-                        "Enter the Aqua Voice hotkey exactly as Aqua displays it. Example: \(SettingsStore.suggestedAquaShortcut).",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                } else if store.hasAquaHotkeyConflict {
+                if store.hasAquaHotkeyConflict {
                     Label(
                         "The Aqua hotkey must be different from every language hotkey.",
                         systemImage: "exclamationmark.triangle.fill"

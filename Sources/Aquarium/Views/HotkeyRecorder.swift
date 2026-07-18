@@ -50,16 +50,19 @@ struct HotkeyRecorder: View {
     private func handle(_ event: NSEvent) {
         switch event.type {
         case .flagsChanged:
-            guard let modifier = HotkeyOption.modifierOnly(
+            guard let physicalModifier = HotkeyOption.modifierOnly(
                 keyCode: Int64(event.keyCode)
             ) else {
                 return
             }
             let flags = HotkeyOption.eventFlags(from: event.modifierFlags)
-            if modifier.isPressed(in: flags) {
-                pendingModifier = modifier
-            } else if pendingModifier?.keyCode == Int64(event.keyCode) {
-                hotkey = modifier
+            if physicalModifier.isPressed(in: flags) {
+                pendingModifier = HotkeyOption.modifierChord(
+                    keyCode: Int64(event.keyCode),
+                    modifiers: flags
+                )
+            } else if let pendingModifier {
+                hotkey = pendingModifier
                 stopRecording()
             }
 

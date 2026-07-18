@@ -2,6 +2,114 @@ import CoreGraphics
 import Foundation
 import OSLog
 
+enum AquariumInjectedEvent {
+    static let marker: Int64 = 0x415155415249554D
+
+    static func mark(_ event: CGEvent) {
+        event.setIntegerValueField(.eventSourceUserData, value: marker)
+    }
+
+    static func matches(_ event: CGEvent) -> Bool {
+        event.getIntegerValueField(.eventSourceUserData) == marker
+    }
+}
+
+struct AquaHotkeyEventStep: Equatable {
+    let keyCode: CGKeyCode
+    let flags: CGEventFlags
+    let keyDown: Bool
+    let type: CGEventType
+}
+
+enum AquaHotkeyEventSequence {
+    private struct ModifierKey {
+        let flag: CGEventFlags
+        let leftKeyCode: CGKeyCode
+        let rightKeyCode: CGKeyCode?
+
+        func keyCode(preferred: Int64) -> CGKeyCode {
+            let preferredKeyCode = CGKeyCode(preferred)
+            if preferredKeyCode == leftKeyCode
+                || preferredKeyCode == rightKeyCode
+            {
+                return preferredKeyCode
+            }
+            return leftKeyCode
+        }
+    }
+
+    private static let modifierKeys = [
+        ModifierKey(
+            flag: .maskCommand,
+            leftKeyCode: 55,
+            rightKeyCode: 54
+        ),
+        ModifierKey(
+            flag: .maskAlternate,
+            leftKeyCode: 58,
+            rightKeyCode: 61
+        ),
+        ModifierKey(
+            flag: .maskControl,
+            leftKeyCode: 59,
+            rightKeyCode: 62
+        ),
+        ModifierKey(
+            flag: .maskShift,
+            leftKeyCode: 56,
+            rightKeyCode: 60
+        ),
+        ModifierKey(
+            flag: .maskSecondaryFn,
+            leftKeyCode: 63,
+            rightKeyCode: nil
+        ),
+    ]
+
+    static func steps(
+        for hotkey: HotkeyOption,
+        keyDown: Bool
+    ) -> [AquaHotkeyEventStep] {
+        guard hotkey.isModifierOnly else {
+            return [
+                AquaHotkeyEventStep(
+                    keyCode: CGKeyCode(hotkey.keyCode),
+                    flags: keyDown ? hotkey.modifiers : [],
+                    keyDown: keyDown,
+                    type: keyDown ? .keyDown : .keyUp
+                ),
+            ]
+        }
+
+        let keys = modifierKeys.filter {
+            hotkey.modifiers.contains($0.flag)
+        }
+        if keyDown {
+            var pressedFlags: CGEventFlags = []
+            return keys.map { key in
+                pressedFlags.insert(key.flag)
+                return AquaHotkeyEventStep(
+                    keyCode: key.keyCode(preferred: hotkey.keyCode),
+                    flags: pressedFlags,
+                    keyDown: true,
+                    type: .flagsChanged
+                )
+            }
+        }
+
+        var pressedFlags = hotkey.modifiers
+        return keys.reversed().map { key in
+            pressedFlags.remove(key.flag)
+            return AquaHotkeyEventStep(
+                keyCode: key.keyCode(preferred: hotkey.keyCode),
+                flags: pressedFlags,
+                keyDown: false,
+                type: .flagsChanged
+            )
+        }
+    }
+}
+
 enum ShortcutMonitorError: LocalizedError {
     case inputMonitoringPermissionRequired
     case accessibilityPermissionRequired
@@ -26,17 +134,14 @@ protocol AquaLanguageSelecting {
 extension AquaAutomationClient: AquaLanguageSelecting {}
 
 protocol AquaHotkeyPosting {
-    func post(shortcut: String, keyDown: Bool) throws
+    func post(hotkey: HotkeyOption, keyDown: Bool) throws
 }
 
 enum AquaHotkeyPosterError: LocalizedError {
-    case invalidShortcut
     case eventCreationFailed
 
     var errorDescription: String? {
         switch self {
-        case .invalidShortcut:
-            "The Aqua Voice relay hotkey is not supported."
         case .eventCreationFailed:
             "Aquarium could not create Aqua Voice's relay hotkey event."
         }
@@ -46,30 +151,37 @@ enum AquaHotkeyPosterError: LocalizedError {
 struct SystemAquaHotkeyPoster: AquaHotkeyPosting {
     private let source = CGEventSource(stateID: .privateState)
 
-    func post(shortcut value: String, keyDown: Bool) throws {
-        guard let shortcut = AquaShortcut(value) else {
-            throw AquaHotkeyPosterError.invalidShortcut
-        }
-        guard let event = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: shortcut.keyCode,
+    func post(hotkey: HotkeyOption, keyDown: Bool) throws {
+        for step in AquaHotkeyEventSequence.steps(
+            for: hotkey,
             keyDown: keyDown
-        ) else {
-            throw AquaHotkeyPosterError.eventCreationFailed
+        ) {
+            guard let event = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: step.keyCode,
+                keyDown: step.keyDown
+            ) else {
+                throw AquaHotkeyPosterError.eventCreationFailed
+            }
+            event.flags = step.flags
+            event.type = step.type
+            AquariumInjectedEvent.mark(event)
+            event.post(tap: .cghidEventTap)
         }
-        event.flags = shortcut.isModifierOnly && !keyDown ? [] : shortcut.flags
-        event.post(tap: .cghidEventTap)
     }
 }
 
 final class HotkeyRelay {
+    private static let languageSelectionFreshness: TimeInterval = 1
+
     private struct ActiveRelay {
         let mapping: LanguageMapping
-        let aquaShortcut: String
+        let aquaHotkey: HotkeyOption
     }
 
     private let languageSelector: any AquaLanguageSelecting
     private let hotkeyPoster: any AquaHotkeyPosting
+    private let now: () -> Date
     private let lock = NSLock()
     private let logger = Logger(
         subsystem: "com.danrosenshain.Aquarium",
@@ -80,37 +192,41 @@ final class HotkeyRelay {
         qos: .userInteractive
     )
     private var mappings: [LanguageMapping] = []
-    private var aquaShortcut = ""
+    private var aquaHotkey = HotkeyOption.suggestedAquaRelay
     private var activeRelays: [UUID: ActiveRelay] = [:]
+    private var lastLanguageAttempt: (code: String, date: Date)?
 
     init(
         languageSelector: any AquaLanguageSelecting,
-        hotkeyPoster: any AquaHotkeyPosting
+        hotkeyPoster: any AquaHotkeyPosting,
+        now: @escaping () -> Date = Date.init
     ) {
         self.languageSelector = languageSelector
         self.hotkeyPoster = hotkeyPoster
+        self.now = now
     }
 
-    func update(mappings: [LanguageMapping], aquaShortcut: String) {
+    func update(mappings: [LanguageMapping], aquaHotkey: HotkeyOption) {
         lock.lock()
         let releases = Array(activeRelays.values)
         activeRelays.removeAll()
         self.mappings = mappings
-        self.aquaShortcut = aquaShortcut
+        self.aquaHotkey = aquaHotkey
         lock.unlock()
 
         relayQueue.async { [weak self] in
             guard let self else { return }
-            releases.forEach { self.relayRelease($0.aquaShortcut) }
+            releases.forEach { self.relayRelease($0.aquaHotkey) }
         }
     }
 
+    @discardableResult
     func handle(
         type: CGEventType,
         keyCode: Int64,
         flags: CGEventFlags,
         isRepeat: Bool = false
-    ) {
+    ) -> Bool {
         lock.lock()
         let transition = transition(
             type: type,
@@ -127,11 +243,12 @@ final class HotkeyRelay {
             }
         case let .released(active):
             relayQueue.async { [weak self] in
-                self?.relayRelease(active.aquaShortcut)
+                self?.relayRelease(active.aquaHotkey)
             }
         case .ignored:
-            break
+            return false
         }
+        return true
     }
 
     func resetPressedKeys() {
@@ -142,7 +259,7 @@ final class HotkeyRelay {
 
         relayQueue.async { [weak self] in
             guard let self else { return }
-            releases.forEach { self.relayRelease($0.aquaShortcut) }
+            releases.forEach { self.relayRelease($0.aquaHotkey) }
         }
     }
 
@@ -181,7 +298,7 @@ final class HotkeyRelay {
             }
             let active = ActiveRelay(
                 mapping: mapping,
-                aquaShortcut: aquaShortcut
+                aquaHotkey: aquaHotkey
             )
             activeRelays[mapping.id] = active
             return .pressed(active)
@@ -197,7 +314,7 @@ final class HotkeyRelay {
             }
             let active = ActiveRelay(
                 mapping: mapping,
-                aquaShortcut: aquaShortcut
+                aquaHotkey: aquaHotkey
             )
             activeRelays[mapping.id] = active
             return .pressed(active)
@@ -218,14 +335,32 @@ final class HotkeyRelay {
     }
 
     private func relayPress(_ active: ActiveRelay) {
+        let languageCode = active.mapping.languageCode
+        let currentDate = now()
+        let selectionIsFresh = lastLanguageAttempt.map {
+            $0.code == languageCode
+                && currentDate.timeIntervalSince($0.date)
+                    < Self.languageSelectionFreshness
+        } ?? false
+
+        if !selectionIsFresh {
+            lastLanguageAttempt = (languageCode, currentDate)
+            do {
+                try languageSelector.setLanguage(languageCode)
+            } catch {
+                logger.error(
+                    "Language selection failed for \(languageCode, privacy: .public); relaying Aqua hotkey anyway: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+
         do {
-            try languageSelector.setLanguage(active.mapping.languageCode)
             try hotkeyPoster.post(
-                shortcut: active.aquaShortcut,
+                hotkey: active.aquaHotkey,
                 keyDown: true
             )
             logger.info(
-                "Relayed \(active.mapping.hotkey.displayName, privacy: .public) as \(active.aquaShortcut, privacy: .public) after selecting \(active.mapping.languageCode, privacy: .public)"
+                "Relayed \(active.mapping.hotkey.displayName, privacy: .public) as \(active.aquaHotkey.displayName, privacy: .public) for \(languageCode, privacy: .public)"
             )
         } catch {
             logger.error(
@@ -234,13 +369,13 @@ final class HotkeyRelay {
         }
     }
 
-    private func relayRelease(_ shortcut: String) {
+    private func relayRelease(_ hotkey: HotkeyOption) {
         do {
-            try hotkeyPoster.post(shortcut: shortcut, keyDown: false)
-            logger.debug("Released relay \(shortcut, privacy: .public)")
+            try hotkeyPoster.post(hotkey: hotkey, keyDown: false)
+            logger.debug("Released relay \(hotkey.displayName, privacy: .public)")
         } catch {
             logger.error(
-                "Relay release failed for \(shortcut, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Relay release failed for \(hotkey.displayName, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -265,8 +400,8 @@ final class ShortcutMonitor {
         )
     }
 
-    func update(mappings: [LanguageMapping], aquaShortcut: String) {
-        relay.update(mappings: mappings, aquaShortcut: aquaShortcut)
+    func update(mappings: [LanguageMapping], aquaHotkey: HotkeyOption) {
+        relay.update(mappings: mappings, aquaHotkey: aquaHotkey)
     }
 
     func start() throws {
@@ -291,7 +426,7 @@ final class ShortcutMonitor {
         guard let tap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,
             eventsOfInterest: mask,
             callback: Self.eventCallback,
             userInfo: userInfo
@@ -327,13 +462,16 @@ final class ShortcutMonitor {
         guard type == .flagsChanged || type == .keyDown || type == .keyUp else {
             return Unmanaged.passUnretained(event)
         }
+        guard !AquariumInjectedEvent.matches(event) else {
+            return Unmanaged.passUnretained(event)
+        }
         _ = proxy
-        monitor.relay.handle(
+        let handled = monitor.relay.handle(
             type: type,
             keyCode: event.getIntegerValueField(.keyboardEventKeycode),
             flags: event.flags,
             isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         )
-        return Unmanaged.passUnretained(event)
+        return handled ? nil : Unmanaged.passUnretained(event)
     }
 }

@@ -5,6 +5,7 @@ struct AquaShortcut: Equatable {
     let keyCode: CGKeyCode
     let flags: CGEventFlags
     let isModifierOnly: Bool
+    let hotkey: HotkeyOption
 
     init?(_ value: String) {
         let components = value
@@ -13,12 +14,25 @@ struct AquaShortcut: Equatable {
             .filter { !$0.isEmpty }
         guard let keyName = components.last else { return nil }
 
-        if components.count == 1,
-           let modifier = Self.modifierOnlyKeys[keyName.lowercased()]
+        if components.allSatisfy({
+            Self.modifierFlags[$0.lowercased()] != nil
+        }),
+           let trigger = Self.modifierOnlyKeys[keyName.lowercased()]
         {
-            keyCode = modifier.keyCode
-            flags = modifier.flag
+            let recordedFlags = components.reduce(into: CGEventFlags()) {
+                result, component in
+                if let flag = Self.modifierFlags[component.lowercased()] {
+                    result.insert(flag)
+                }
+            }
+            guard let recordedHotkey = HotkeyOption.modifierChord(
+                keyCode: Int64(trigger.keyCode),
+                modifiers: recordedFlags
+            ) else { return nil }
+            keyCode = trigger.keyCode
+            flags = recordedFlags
             isModifierOnly = true
+            hotkey = recordedHotkey
             return
         }
 
@@ -37,12 +51,38 @@ struct AquaShortcut: Equatable {
         keyCode = resolvedKeyCode
         flags = resolvedFlags
         isModifierOnly = false
+        hotkey = .keyboard(
+            keyCode: Int64(resolvedKeyCode),
+            modifiers: resolvedFlags,
+            keyLabel: Self.displayLabel(for: keyName)
+        )
     }
 
     func conflicts(with trigger: HotkeyOption) -> Bool {
         guard isModifierOnly == trigger.isModifierOnly else { return false }
         guard keyCode == trigger.keyCode else { return false }
         return isModifierOnly || flags == trigger.modifiers
+    }
+
+    private static func displayLabel(for keyName: String) -> String {
+        let uppercased = keyName.uppercased()
+        if uppercased.hasPrefix("KEY"), uppercased.count == 4 {
+            return String(uppercased.suffix(1))
+        }
+        if uppercased.hasPrefix("DIGIT"), uppercased.count == 6 {
+            return String(uppercased.suffix(1))
+        }
+        return switch uppercased {
+        case "ARROWLEFT": "←"
+        case "ARROWRIGHT": "→"
+        case "ARROWDOWN": "↓"
+        case "ARROWUP": "↑"
+        case "BACKSPACE": "Delete"
+        case "FORWARDDELETE": "Forward Delete"
+        case "PAGEUP": "Page Up"
+        case "PAGEDOWN": "Page Down"
+        default: keyName
+        }
     }
 
     private static let modifierFlags: [String: CGEventFlags] = [

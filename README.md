@@ -17,7 +17,8 @@ Example mappings:
 | Right Option | Hebrew |
 
 Triggers are recorded directly. They can be a modifier-only key, such as
-Right Command, or any normal key combination.
+Right Command, a pure modifier chord such as Shift + Command + Control +
+Option, or any normal key combination.
 
 ## Requirements
 
@@ -33,7 +34,7 @@ socket. An Aqua Voice update may change that interface.
 1. In Aqua Voice, enable streaming mode.
 2. Set one Aqua Voice activation hotkey. A complex shortcut such as
    `Meta+Alt+Control+Shift+F17` avoids conflicts.
-3. Open Aquarium Settings and enter the same shortcut in **Aqua hotkey**.
+3. Open Aquarium Settings and record the same shortcut in **Aqua hotkey**.
 4. For each language, choose a language and record any trigger you want.
 5. Click **Apply**.
 
@@ -78,13 +79,19 @@ same script.
 Aquarium:
 
 1. Stores up to three language and arbitrary-hotkey mappings.
-2. Stores the Aqua Voice activation hotkey you enter manually.
+2. Stores the Aqua Voice activation hotkey you record manually.
 3. Launches Aqua Voice with its local automation socket enabled.
-4. On trigger press, switches Aqua's language and waits for confirmation.
-5. Forwards the shared Aqua hotkey press and release, keeping
+4. On trigger press, switches Aqua's language and waits for confirmation. A
+   same-language second tap skips the repeated switch so it reaches Aqua inside
+   the native hands-free timing window.
+5. Posts the shared Aqua hotkey press and release to macOS's global keyboard
+   stream so Aqua's global shortcut listener receives it, keeping
    hold-to-stream and double-tap hands-free behavior intact.
 
 Aquarium does not capture audio, transcribe speech, or replace Aqua Voice.
+Injected relay events carry an Aquarium marker, so Aquarium ignores its own
+events instead of relaying them again. A pure modifier chord is recommended for
+the shared Aqua hotkey because it cannot type into the focused app.
 
 See [Architecture](docs/ARCHITECTURE.md) for implementation and security
 details.

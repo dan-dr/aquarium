@@ -13,21 +13,29 @@ companion to Aqua Voice rather than patching Aqua's Electron bundle.
 
 1. `SettingsStore` persists up to three `LanguageMapping` values in
    `UserDefaults`.
-2. `SettingsStore` persists one shared Aqua activation shortcut entered by the
+2. `SettingsStore` persists one shared Aqua activation shortcut recorded by the
    user. Aquarium never reads or writes Aqua's settings.
 3. `AquaCoordinator` launches `/Applications/Aqua Voice.app` with
    `--automation-socket ~/Library/Application Support/Aquarium/aqua.sock` and
    leaves Aqua a quiet startup window before the first health check.
 4. `ShortcutMonitor` observes modifier changes plus normal key-down and key-up
-   events through a listen-only HID event tap.
+   events through an active HID event tap. Configured language triggers are
+   consumed so Aqua and the focused app do not see the original trigger.
 5. The event callback records the transition on a serial relay queue and
    returns immediately, avoiding a deadlock with Aqua's own keyboard-event
    processing.
 6. On key-down, `AquaAutomationClient` writes the mapping's language code and
-   waits for Aqua's response on that relay queue.
-7. Only after that response, Aquarium posts the shared user-configured Aqua
-   activation event. Key-up is queued behind it and forwarded to the same
-   shortcut.
+   waits for Aqua's response on that relay queue. A repeated press for the same
+   language within one second reuses that selection so Aqua receives both taps
+   inside its native 0.4-second hands-free window.
+7. Aquarium posts the shared user-configured Aqua activation event to macOS's
+   global HID stream because Aqua listens for its shortcut globally. A language
+   socket failure is logged but does not suppress the activation event. Pure
+   modifier chords are emitted as individual physical modifier transitions,
+   matching Aqua's native bridge state machine. Key-up is queued behind
+   key-down and posted to the same stream.
+8. Injected events carry an Aquarium-specific user-data marker. The event tap
+   ignores that marker, preventing Aquarium from relaying its own events.
 
 Aqua remains responsible for hold-to-stream, release-to-finish, double-tap
 hands-free mode, audio capture, transcription, and text insertion.
@@ -44,13 +52,15 @@ Microphone, Screen Recording, or App Sandbox exceptions.
 
 The user owns Aqua's hotkey and streaming-mode configuration. Aquarium does not
 read or write Aqua's settings and does not send settings mutations through
-automation. The Aqua hotkey is entered manually. Language triggers can be
-modifier-only keys or arbitrary keyboard chords. The shared Aqua relay hotkey
-must not match a language trigger.
+automation. The Aqua hotkey is recorded manually. Hotkeys can be a single
+modifier, a pure multi-modifier chord, or an arbitrary keyboard chord. The
+shared Aqua relay hotkey must not match a language trigger.
 
 The Aqua automation protocol is undocumented and is used only to select the
 language. Keep protocol use isolated in `AquaAutomationClient` and treat
 connection failures as a compatibility issue, not as permission failures.
+See [Aqua Voice protocols](AQUA-PROTOCOLS.md) for the tested automation and
+native bridge boundaries.
 
 ## Distribution
 

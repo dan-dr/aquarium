@@ -35,12 +35,12 @@ final class AquaCoordinator {
 
     func apply(
         mappings: [LanguageMapping],
-        aquaShortcut: String,
+        aquaHotkey: HotkeyOption,
         forceRestart: Bool = false
     ) throws {
         monitor.update(
             mappings: mappings,
-            aquaShortcut: aquaShortcut
+            aquaHotkey: aquaHotkey
         )
 
         if forceRestart || !isConnected {
