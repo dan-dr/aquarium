@@ -291,8 +291,7 @@ final class HotkeyRelay {
 
             guard let mapping = mappings.first(where: {
                 $0.hotkey.isModifierOnly
-                    && $0.hotkey.keyCode == keyCode
-                    && $0.hotkey.isPressed(in: flags)
+                    && $0.hotkey.matches(keyCode: keyCode, flags: flags)
             }) else {
                 return .ignored
             }

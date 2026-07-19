@@ -88,6 +88,29 @@ final class HotkeyRelayTests: XCTestCase {
         relay.waitUntilIdle()
     }
 
+    func testModifierTriggerRejectsAdditionalModifiers() {
+        let recorder = RelayRecorder()
+        let relay = HotkeyRelay(
+            languageSelector: RecordingLanguageSelector(recorder: recorder),
+            hotkeyPoster: RecordingHotkeyPoster(recorder: recorder)
+        )
+        relay.update(
+            mappings: LanguageMapping.defaults,
+            aquaHotkey: .suggestedAquaRelay
+        )
+
+        XCTAssertFalse(
+            relay.handle(
+                type: .flagsChanged,
+                keyCode: HotkeyOption.rightCommand.keyCode,
+                flags: [.maskCommand, .maskShift]
+            )
+        )
+        relay.waitUntilIdle()
+
+        XCTAssertEqual(recorder.events, [])
+    }
+
     func testLanguageChangesBeforeRelayPressAndRelease() {
         let recorder = RelayRecorder()
         let relay = HotkeyRelay(

@@ -47,7 +47,7 @@ struct HotkeyOption: Codable, Hashable, Identifiable {
     }
 
     func matches(keyCode: Int64, flags: CGEventFlags) -> Bool {
-        guard kind == .keyboard, self.keyCode == keyCode else { return false }
+        guard self.keyCode == keyCode else { return false }
         return flags.intersection(Self.supportedModifierMask) == modifiers
     }
 

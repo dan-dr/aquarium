@@ -20,7 +20,9 @@ companion to Aqua Voice rather than patching Aqua's Electron bundle.
    leaves Aqua a quiet startup window before the first health check.
 4. `ShortcutMonitor` observes modifier changes plus normal key-down and key-up
    events through an active HID event tap. Configured language triggers are
-   consumed so Aqua and the focused app do not see the original trigger.
+   consumed so Aqua and the focused app do not see the original trigger. A
+   trigger matches only its exact recorded modifier set, so Command does not
+   also match Shift-Command.
 5. The event callback records the transition on a serial relay queue and
    returns immediately, avoiding a deadlock with Aqua's own keyboard-event
    processing.

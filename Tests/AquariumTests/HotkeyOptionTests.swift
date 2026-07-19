@@ -16,6 +16,27 @@ final class HotkeyOptionTests: XCTestCase {
         XCTAssertFalse(HotkeyOption.rightCommand.isPressed(in: []))
     }
 
+    func testModifierTriggerMatchesOnlyItsRecordedModifiers() {
+        XCTAssertTrue(
+            HotkeyOption.rightCommand.matches(
+                keyCode: HotkeyOption.rightCommand.keyCode,
+                flags: .maskCommand
+            )
+        )
+        XCTAssertFalse(
+            HotkeyOption.rightCommand.matches(
+                keyCode: HotkeyOption.rightCommand.keyCode,
+                flags: [.maskCommand, .maskShift]
+            )
+        )
+        XCTAssertFalse(
+            HotkeyOption.rightCommand.matches(
+                keyCode: 55,
+                flags: .maskCommand
+            )
+        )
+    }
+
     func testLanguageListMatchesAquaPublishedCount() {
         XCTAssertEqual(LanguageOption.all.count, 50)
         XCTAssertEqual(
